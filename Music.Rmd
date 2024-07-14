@@ -1,0 +1,281 @@
+
+```{r setup, results="hide", warning=F, message=F}
+library(data.table)
+library(tidyverse)
+library(plotly)
+library(readr)
+library(dplyr)
+```
+
+# Load Music and Mental Health Dataset.
+
+```{r}
+# Read the iris.csv file
+data <- fread("music_health.csv")
+head(data)
+```
+# 
+```{r}
+# Using str() to get the structure of the dataframe
+str(data)
+# Using summary() to get a statistical summary of the dataframe
+summary(data)
+```
+# Dimentions of the data
+```{r}
+dim(data)
+
+```
+
+# Missing values
+
+```{r}
+# function to check for NA or empty values
+missing_values <- function(x) {
+  is.na(x) | x == ""
+}
+# Apply this function to each column and sum the missing values
+data_missing <- colSums(sapply(data, missing_values))
+print(data_missing)
+
+```
+# Remove columns with many missing values
+
+```{r}
+new_data <- data %>% 
+  select(-BPM)
+head(new_data)
+```
+# Remove entries with missing values
+
+```{r}
+# Columns for which to check missing values
+columns_to_check <- c('Age', 'Primary streaming service', 'While working', 
+                      'Instrumentalist', 'Composer', 'Foreign languages', 'Music effects')
+
+# Apply the missing_values function to the specified columns and identify rows to keep
+rows_to_keep <- apply(new_data[, ..columns_to_check], 1, function(x) all(!missing_values(x)))
+
+# Keep only the rows without missing values in these columns
+new_data <- new_data[rows_to_keep, ]
+print(dim(new_data))
+
+```
+
+# Removing outliers
+```{r}
+# Boxplot for the 'Age' column
+boxplot(new_data$Age, main = "Boxplot for Age")
+
+# Boxplot for the 'Hours per day' column
+boxplot(new_data$`Hours per day`, main = "Boxplot for Hours per day")
+
+```
+```{r}
+# Calculate IQR for 'Age'
+ Q1_age <- quantile(new_data$Age, 0.25)
+ Q3_age <- quantile(new_data$Age, 0.75)
+ IQR_age <- Q3_age - Q1_age
+# Define the bounds for outliers
+ lower_bound_age <- Q1_age - 1.5 * IQR_age
+ upper_bound_age <- Q3_age + 1.5 * IQR_age # Filter out the outliers
+new_data <- new_data[new_data$Age >= lower_bound_age & new_data$Age <= upper_bound_age, ]# Calculate IQR for 'Hours per day'
+ Q1_hours <- quantile(new_data$`Hours per day`, 0.25)
+ Q3_hours <- quantile(new_data$`Hours per day`, 0.75)
+ IQR_hours <- Q3_hours - Q1_hours
+ # Define the bounds for outliers
+ lower_bound_hours <- Q1_hours - 1.5 * IQR_hours
+ upper_bound_hours <- Q3_hours + 1.5 * IQR_hours
+ # Filter out the outliers
+new_data <- new_data[new_data$`Hours per day` >= lower_bound_hours & new_data$`Hours per day` <= upper_bound_hours, ]
+
+```
+
+# Exploratory Data Analysis
+
+# Histogram
+
+```{r}
+# Columns for which to create histograms
+columns_to_plot <- c('Age', 'Hours per day', 'Anxiety', 'Depression', 'Insomnia', 'OCD')
+
+# Set up the plotting area to display multiple plots (2 columns, 3 rows)
+#par(mfrow = c(3, 1))
+
+# Loop through the specified columns to create histograms
+for (col in columns_to_plot) {
+  hist(new_data[[col]], 
+       breaks = 30,
+       main = paste("Histogram of", col), 
+       xlab = col, 
+       col = "mediumaquamarine", 
+       border = "black")
+}
+
+```
+# Popular streaming service
+
+```{r}
+library(ggplot2)
+
+# Count the occurrences of each category in 'Primary streaming service'
+services <- table(new_data$`Primary streaming service`)
+new_data$`Primary streaming service`[new_data$`Primary streaming service` == 'Other streaming service'] <- 'Other'
+new_data$`Primary streaming service`[new_data$`Primary streaming service` == 'I do not use a streaming service.'] <- 'None'
+new_data$`Primary streaming service`[new_data$`Primary streaming service` == 'YouTube Music'] <- 'YouTube'
+
+# Convert to dataframe for ggplot
+services_df <- as.data.frame(services)
+
+# Define colors
+s_colors <- c('lightgreen', 'lightcoral', 'steelblue', 'palevioletred', 'gold', 'darkturquoise')
+
+# Create a pie chart
+ggplot(services_df, aes(x = "", y = Freq, fill = Var1)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start = 0) +
+  scale_fill_manual(values = s_colors) +
+  theme_void() +
+  labs(title = "Popular Streaming Service", fill = "Service")
+```
+
+# 
+```{r}
+library(ggplot2)
+
+# Replace specific values in 'Primary streaming service' column
+new_data$`Primary streaming service` <- as.character(new_data$`Primary streaming service`)
+new_data$`Primary streaming service`[new_data$`Primary streaming service` == 'Other streaming service'] <- 'Other'
+new_data$`Primary streaming service`[new_data$`Primary streaming service` == 'I do not use a streaming service.'] <- 'None'
+new_data$`Primary streaming service`[new_data$`Primary streaming service` == 'YouTube Music'] <- 'YouTube'
+
+# Define colors
+s_colors2 <- c('lightgreen', 'darkturquoise', 'lightcoral', 'steelblue', 'palevioletred', 'gold')
+
+# Create a boxplot
+ggplot(new_data, aes(x = `Primary streaming service`, y = Age, fill = `Primary streaming service`)) +
+  geom_boxplot(show.legend = FALSE, outlier.shape = NA) + # Hide outliers
+  scale_fill_manual(values = s_colors2) +
+  labs(title = "Streaming Services by Age", x = "Primary Streaming Service", y = "Age") +
+  theme_minimal()
+```
+
+# Mental Health Scores by Hours Per Day Group
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+
+
+
+# Categorize 'Hours per day' into ranges
+new_data$Hours_Per_Day_Group <- cut(new_data$`Hours per day`,
+                                    breaks = c(0, 2, 5, 8, 12, 24),
+                                    labels = c("0-2", "3-5", "6-8", "9-12", "13-24"),
+                                    include.lowest = TRUE)
+
+# Calculate median values for each group
+mental_health_medians <- new_data %>%
+  group_by(Hours_Per_Day_Group) %>%
+  dplyr::summarise(across(c(Anxiety, Depression, Insomnia, OCD), median, na.rm = TRUE), .groups = 'drop')
+
+# Reshape the data to long format for plotting
+long_data <- tidyr::pivot_longer(mental_health_medians, cols = c(Anxiety, Depression, Insomnia, OCD), 
+                          names_to = "Condition", values_to = "Median")
+
+# Create the plot
+ggplot(long_data, aes(x = Hours_Per_Day_Group, y = Median, fill = Condition)) +
+  geom_bar(stat = "identity", position = position_dodge(), width = 0.7) +
+  scale_fill_brewer(palette = "Pastel1") +
+  labs(y = "Median Score", title = "Mental Health Scores by Hours Per Day Group") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Print the plot
+ggsave("mental_health_scores_by_hours_grouped.png", width = 10, height = 5)
+
+
+```
+
+```{r}
+# Load the necessary library
+library(ggplot2)
+
+# Get the counts of the levels in 'Music effects'
+effects <- table(new_data$`Music effects`)
+
+# Convert to a dataframe for plotting
+effects_df <- as.data.frame(effects)
+
+# Rename the columns for ggplot2
+names(effects_df) <- c("Effects", "Count")
+
+# Create the pie chart using ggplot2
+ggplot(effects_df, aes(x = "", y = Count, fill = Effects)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  scale_fill_manual(values = c("indianred", "gold", "darkblue")) +
+  theme_void() +
+  labs(title = "Music Effects on Mental Health", fill = "Effects") +
+  theme(legend.position = "bottom")
+
+# To display the plot in R Studio's viewer or your current graphics device
+ggsave("MusicEffectsPieChart.png", width = 5, height = 4)
+
+```
+
+# Clustering
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+
+# Aggregate data by 'Primary streaming service'
+streaming_service_aggregated <- new_data %>%
+  group_by(`Primary streaming service`) %>%
+  dplyr::summarise(across(where(is.numeric), mean, na.rm = TRUE))
+
+# Remove the first column (Primary streaming service) for k-means clustering
+streaming_service_data <- streaming_service_aggregated[, -1]
+
+# K-means clustering
+set.seed(123)  # Set seed for reproducibility
+k <- 3  # Number of clusters
+
+kmeans_result <- kmeans(streaming_service_data, centers = k, nstart = 25)
+
+# Add cluster results to the aggregated data
+streaming_service_aggregated$cluster <- kmeans_result$cluster
+
+# View the result
+print(streaming_service_aggregated)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
